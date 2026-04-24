@@ -12,71 +12,41 @@ on:
         required: false
         type: string
       folder_path:
-        description: 'Folder path (optional, e.g., downloads/)'
+        description: 'Folder path (optional)'
         required: false
         type: string
         default: 'downloads'
 
-# These permissions are not strictly needed with PAT, but harmless
-permissions:
-  contents: write
-
 jobs:
   download:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout repository with PAT
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Download file
         id: download
         run: |
-          # Determine filename
-          if [ -n "${{ inputs.filename }}" ]; then
-            FILENAME="${{ inputs.filename }}"
-          else
+          FILENAME="${{ inputs.filename }}"
+          if [ -z "$FILENAME" ]; then
             FILENAME=$(basename "${{ inputs.file_url }}" | cut -d '?' -f1)
-            if [ -z "$FILENAME" ]; then
-              FILENAME="downloaded_file"
-            fi
+            [ -z "$FILENAME" ] && FILENAME="downloaded_file"
           fi
-
-          # Create folder if needed
+          
           mkdir -p "${{ inputs.folder_path }}"
           FILE_PATH="${{ inputs.folder_path }}/$FILENAME"
-
-          # Download with a real browser User-Agent (helps avoid blocks)
-          curl -L --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -o "$FILE_PATH" "${{ inputs.file_url }}"
-
-          # Verify download succeeded
-          if [ ! -f "$FILE_PATH" ]; then
-            echo "Error: Download failed"
-            exit 1
-          fi
-
+          
+          curl -L -o "$FILE_PATH" "${{ inputs.file_url }}"
+          
           echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
           echo "Downloaded to: $FILE_PATH"
 
-      - name: Debug PAT token (safe check)
+      - name: Commit and push
         run: |
-          if [ -n "${{ secrets.PAT_TOKEN }}" ]; then
-            echo "PAT_TOKEN exists (length: ${#{{ secrets.PAT_TOKEN }}})"
-            # Test token against GitHub API (safe, returns username)
-            curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-                 "https://api.github.com/user" | grep login || echo "Token invalid"
-          else
-            echo "PAT_TOKEN is empty or not set!"
-            exit 1
-          fi
-
-      - name: Commit and push using PAT
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ steps.download.outputs.file_path }}"
           git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes to commit"
-          # Push using the PAT stored in secrets.PAT_TOKEN
-          # Format: https://TOKEN@github.com/owner/repo.git
-          git push "https://${{ secrets.PAT_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          git push
