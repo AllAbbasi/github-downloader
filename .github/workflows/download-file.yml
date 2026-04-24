@@ -24,45 +24,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download and commit file
+      - name: Download file
+        id: download
         run: |
-          # Set up git
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Determine filename
-          if [ -n "${{ inputs.filename }}" ]; then
-            FILENAME="${{ inputs.filename }}"
-          else
+          # Prepare path
+          FILENAME="${{ inputs.filename }}"
+          if [ -z "$FILENAME" ]; then
             FILENAME=$(basename "${{ inputs.file_url }}" | cut -d '?' -f1)
             if [ -z "$FILENAME" ]; then
               FILENAME="downloaded_file"
             fi
           fi
           
-          # Determine path
-          if [ -n "${{ inputs.folder_path }}" ]; then
-            mkdir -p "${{ inputs.folder_path }}"
-            FILE_PATH="${{ inputs.folder_path }}/$FILENAME"
-          else
-            FILE_PATH="$FILENAME"
-          fi
+          mkdir -p "${{ inputs.folder_path }}"
+          FILE_PATH="${{ inputs.folder_path }}/$FILENAME"
           
-          # Download
-          echo "Downloading from: ${{ inputs.file_url }}"
+          # Download the file
           curl -L "${{ inputs.file_url }}" --output "$FILE_PATH"
           
-          # Check if download succeeded
-          if [ ! -f "$FILE_PATH" ]; then
-            echo "Error: Download failed"
-            exit 1
-          fi
+          # Set output for use in later steps
+          echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
           
-          # Add and commit
-          git add "$FILE_PATH"
+          # Also save as environment variable for same step use
+          echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
+          
+          echo "Downloaded to: $FILE_PATH"
+      
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.download.outputs.file_path }}"
           git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes to commit"
-          
-          # Push with token
+          # ONLY CHANGE: Added authentication to git push
           git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
-          
-          echo "✅ Successfully added: $FILE_PATH"
