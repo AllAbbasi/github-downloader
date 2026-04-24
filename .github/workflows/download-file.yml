@@ -1,3 +1,55 @@
+name: Download File from Any Link
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'URL to download from'
+        required: true
+        type: string
+      filename:
+        description: 'Save as (optional)'
+        required: false
+        type: string
+      folder_path:
+        description: 'Folder path (optional)'
+        required: false
+        type: string
+        default: 'downloads'
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download file
+        id: download
+        run: |
+          # Prepare path
+          FILENAME="${{ inputs.filename }}"
+          if [ -z "$FILENAME" ]; then
+            FILENAME=$(basename "${{ inputs.file_url }}" | cut -d '?' -f1)
+            if [ -z "$FILENAME" ]; then
+              FILENAME="downloaded_file"
+            fi
+          fi
+          
+          mkdir -p "${{ inputs.folder_path }}"
+          FILE_PATH="${{ inputs.folder_path }}/$FILENAME"
+          
+          # Download the file
+          curl -L "${{ inputs.file_url }}" --output "$FILE_PATH"
+          
+          # Set output for use in later steps
+          echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
+          
+          # Also save as environment variable for same step use
+          echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
+          
+          echo "Downloaded to: $FILE_PATH"
+      
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
