@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       file_url:
-        description: 'URL to download from'
+        description: 'Direct URL of the file to download'
         required: true
         type: string
       filename:
-        description: 'Save as (optional)'
+        description: 'Name to save the file as (optional)'
         required: false
         type: string
       folder_path:
@@ -17,40 +17,42 @@ on:
         type: string
         default: 'downloads'
 
-permissions:
-  contents: write
-
 jobs:
   download:
     runs-on: ubuntu-latest
+    permissions:               # ← KEY FIX: permissions inside the job
+      contents: write
     
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Download file
         id: download
         run: |
-          FILENAME="${{ inputs.filename }}"
-          if [ -z "$FILENAME" ]; then
+          # Determine filename
+          if [ -n "${{ inputs.filename }}" ]; then
+            FILENAME="${{ inputs.filename }}"
+          else
             FILENAME=$(basename "${{ inputs.file_url }}" | cut -d '?' -f1)
-            if [ -z "$FILENAME" ]; then
-              FILENAME="downloaded_file"
-            fi
+            [ -z "$FILENAME" ] && FILENAME="downloaded_file"
           fi
           
+          # Create folder if needed
           mkdir -p "${{ inputs.folder_path }}"
           FILE_PATH="${{ inputs.folder_path }}/$FILENAME"
           
-          curl -L "${{ inputs.file_url }}" --output "$FILE_PATH"
+          # Download with browser user-agent (helps avoid blocks)
+          curl -L --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            -o "$FILE_PATH" "${{ inputs.file_url }}"
           
           echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
-          
           echo "Downloaded to: $FILE_PATH"
-      
-      - name: Commit and push changes
+
+      - name: Commit and push
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ steps.download.outputs.file_path }}"
-          git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes to commit"
-          git push  # Simple - uses the GITHUB_TOKEN with write permissions
+          git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes"
+          git push   # Simple push - uses GITHUB_TOKEN with write permissions
