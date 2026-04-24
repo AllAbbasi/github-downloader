@@ -59,6 +59,18 @@ jobs:
           echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
           echo "Downloaded to: $FILE_PATH"
 
+      - name: Debug PAT token (safe check)
+        run: |
+          if [ -n "${{ secrets.PAT_TOKEN }}" ]; then
+            echo "PAT_TOKEN exists (length: ${#{{ secrets.PAT_TOKEN }}})"
+            # Test token against GitHub API (safe, returns username)
+            curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+                 "https://api.github.com/user" | grep login || echo "Token invalid"
+          else
+            echo "PAT_TOKEN is empty or not set!"
+            exit 1
+          fi
+
       - name: Commit and push using PAT
         run: |
           git config --global user.name "github-actions[bot]"
