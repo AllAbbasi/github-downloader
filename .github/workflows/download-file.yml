@@ -43,10 +43,41 @@ jobs:
           echo "file_path=$FILE_PATH" >> $GITHUB_OUTPUT
           echo "Downloaded to: $FILE_PATH"
 
-      - name: Commit and push
+      - name: Commit and push (auto LFS for large files)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.download.outputs.file_path }}"
-          git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes to commit"
+          
+          FILE_PATH="${{ steps.download.outputs.file_path }}"
+          FILE_SIZE=$(stat -c%s "$FILE_PATH" 2>/dev/null || stat -f%z "$FILE_PATH" 2>/dev/null)
+          SIZE_MB=$((FILE_SIZE / 1048576))
+          LIMIT=104857600  # 100 MB in bytes
+          
+          echo "File size: ${SIZE_MB} MB"
+          
+          if [ $FILE_SIZE -gt $LIMIT ]; then
+            echo "⚠️ File exceeds 100 MB. Using Git LFS..."
+            
+            # Install Git LFS (already on runner, but ensure)
+            git lfs install
+            
+            # Track the file pattern (use relative path)
+            REL_PATH="${FILE_PATH#./}"
+            git lfs track "$REL_PATH"
+            
+            # Add .gitattributes if new
+            git add .gitattributes
+            git commit -m "Track large file with Git LFS" || echo "LFS tracking already committed"
+            
+            # Add and commit the large file (will be stored as LFS pointer)
+            git add "$REL_PATH"
+            git commit -m "Add large file from ${{ inputs.file_url }} (${SIZE_MB} MB, using LFS)"
+          else
+            echo "File under 100 MB. Committing normally."
+            git add "$FILE_PATH"
+            git commit -m "Add file from ${{ inputs.file_url }}" || echo "No changes to commit"
+          fi
+          
+          # Push (the checkout already set up authentication with PAT)
           git push
+          echo "✅ Successfully pushed file(s)."
